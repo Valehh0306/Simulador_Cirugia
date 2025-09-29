@@ -1,1 +1,98 @@
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using System.IO.Ports;
+
+public class Joystick_arduino : MonoBehaviour
+{
+
+    [Header("Arduino Settings")]
+    public string portName = "COM8";  // Ajustar a tu puerto 
+    public int baudRate = 9600;
+
+    [Header("GameObjects")]
+    public Rigidbody bisturi;         // Asignar el Rigidbody del bisturí aquí
+
+    [Header("Movement Settings")]
+    public float moveSpeed = 0.02f;   // Velocidad lateral
+    public float verticalSpeed = 0.02f; // Velocidad vertical
+
+    private SerialPort serialPort;
+    private string incomingData;
+
+    // Variables de movimiento
+    private float x1, y1, x2, y2;
+    private bool switchPressed;
+
+    void Start()
+    {
+        try
+        {
+            serialPort = new SerialPort(portName, baudRate);
+            serialPort.ReadTimeout = 50;
+            serialPort.Open();
+            Debug.Log("Conectado a Arduino en " + portName);
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError("Error al abrir el puerto serie: " + e.Message);
+        }
+
+        // Desactivar gravedad desde código por seguridad
+        if (bisturi != null) bisturi.useGravity = false;
+    }
+
+    void Update()
+    {
+        // Leer datos del Arduino
+        if (serialPort != null && serialPort.IsOpen)
+        {
+            try
+            {
+                incomingData = serialPort.ReadLine();
+                string[] values = incomingData.Split(',');
+
+                if (values.Length == 5)
+                {
+                    x1 = MapAxis(float.Parse(values[0]), 0, 1023);
+                    y1 = MapAxis(float.Parse(values[1]), 0, 1023);
+                    x2 = MapAxis(float.Parse(values[2]), 0, 1023);
+                    y2 = MapAxis(float.Parse(values[3]), 0, 1023);
+                    switchPressed = (int.Parse(values[4]) == 0); // 0 = presionado
+                }
+            }
+            catch (System.Exception) { }
+        }
+    }
+
+    void FixedUpdate()
+    {
+        if (bisturi == null) return;
+
+        // Movimiento lateral (joystick izquierdo)
+        Vector3 lateralMove = new Vector3(x1, 0, y1) * moveSpeed;
+
+        // Movimiento vertical (joystick derecho)
+        Vector3 verticalMove = new Vector3(0, y2 * verticalSpeed, 0);
+
+        // Switch para bajar más rápido
+        if (switchPressed)
+            verticalMove += Vector3.down * verticalSpeed * 2f;
+
+        // Aplicar movimiento con física
+        bisturi.MovePosition(bisturi.position + lateralMove + verticalMove);
+    }
+
+    private float MapAxis(float value, float min, float max)
+    {
+        // Normaliza a -1 a 1 (centro del joystick = 0)
+        return ((value - min) / (max - min)) * 2f - 1f;
+    }
+
+    void OnApplicationQuit()
+    {
+        if (serialPort != null && serialPort.IsOpen)
+            serialPort.Close();
+    }
+}
 
